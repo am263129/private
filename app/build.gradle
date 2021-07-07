@@ -15,7 +15,7 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
@@ -55,4 +55,5 @@ dependencies {
 // Third-party
     implementation 'cat.ereza:customactivityoncrash:2.3.0'
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
+    implementation 'com.google.apis:google-api-services-drive:v3-rev110-1.23.0'
 }

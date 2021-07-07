@@ -24,6 +24,7 @@ import android.content.SharedPreferences;
 import com.emanuelef.remote_capture.Utils;
 
 public class Prefs {
+    public static final String SHARED_PREF_KEY = "pcap_android_capture";
     public static final String DUMP_HTTP_SERVER = "http_server";
     public static final String DUMP_UDP_EXPORTER = "udp_exporter";
     public static final String DUMP_PCAP_FILE = "pcap_file";

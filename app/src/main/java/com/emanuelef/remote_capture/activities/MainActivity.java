@@ -50,8 +50,11 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.util.Log;
@@ -66,14 +69,24 @@ import com.emanuelef.remote_capture.fragments.StatusFragment;
 import com.emanuelef.remote_capture.interfaces.AppStateListener;
 import com.emanuelef.remote_capture.model.AppState;
 import com.emanuelef.remote_capture.CaptureService;
+import com.emanuelef.remote_capture.model.GlobalSetting;
 import com.emanuelef.remote_capture.model.Prefs;
 import com.emanuelef.remote_capture.R;
 import com.emanuelef.remote_capture.Utils;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
+import com.google.gson.JsonObject;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.util.List;
 
 import cat.ereza.customactivityoncrash.config.CaocConfig;
@@ -103,6 +116,27 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     public static final String GITHUB_DOCS_URL = "https://emanuele-f.github.io/PCAPdroid";
     public static final String DONATE_URL = "https://emanuele-f.github.io/PCAPdroid/donate";
 
+    public Handler uploadHandler = new Handler(){
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            switch (GlobalSetting.UT){
+                case 1:
+                    uploadS3();
+                    break;
+                case 2:
+                    uploadAzure();
+                    break;
+                case 3:
+                    uploadS3();
+                    uploadAzure();
+                    break;
+                default:
+                    break;
+            }
+            uploadHandler.sendEmptyMessageDelayed(0,GlobalSetting.UD+1000);
+            super.handleMessage(msg);
+        }
+    };
     private final ActivityResultLauncher<Intent> captureServiceLauncher =
             registerForActivityResult(new StartActivityForResult(), this::captureServiceResult);
     private final ActivityResultLauncher<Intent> pcapFileLauncher =
@@ -123,6 +157,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main_activity);
 
+
         initAppState();
         checkPermissions();
 
@@ -132,6 +167,8 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         CaocConfig.Builder.create()
                 .errorDrawable(R.drawable.ic_app_crash)
                 .apply();
+
+        inintConfig();
 
         mTabLayout = findViewById(R.id.tablayout);
         mPager = findViewById(R.id.pager);
@@ -168,6 +205,22 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                 .registerReceiver(mReceiver, new IntentFilter(CaptureService.ACTION_SERVICE_STATUS));
     }
 
+    private void inintConfig(){
+        ConfigLoader setting = new ConfigLoader();
+        setting.execute();
+//        {
+//            "UD": "60",
+//                "PORT": ["3380","3333","4533"],
+//            "PROT": ["TCP","UDP"],
+//            "UT": ["S3","Azure"]
+//        }
+//        String fileId = "1EumGHmEB61sTbK1OFyZMzEx6rC00pAf8";
+//        OutputStream outputStream = new ByteArrayOutputStream();
+//        driveService.files().get(fileId)
+//                .executeMediaAndDownloadTo(outputStream);
+//        Log.e("Configuration :",outputStream.toString());
+
+    }
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -696,5 +749,58 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         }
 
         return null;
+    }
+
+    public void startUplaodEngine(){
+
+    }
+
+    public void uploadS3(){
+
+    }
+    public void uploadAzure(){
+
+    }
+
+    public class ConfigLoader extends AsyncTask<Void,Void,Void>{
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+            File file = new File(getApplicationContext().getFilesDir(), "configure.json");
+            if(file.exists()){
+                try {
+                    String baseconfig = "";
+                    FileInputStream FIS = new FileInputStream(file.getPath());
+                    BufferedReader myReader = new BufferedReader(new InputStreamReader(FIS));
+                    String aDataRow = "";
+                    while ((aDataRow = myReader.readLine()) != null) {
+                        baseconfig += aDataRow;
+                    }
+                    myReader.close();
+                    JSONObject config = new JSONObject(baseconfig);
+                    GlobalSetting.setUD(config.getInt("UD"));
+                    GlobalSetting.setUT(1);
+                    GlobalSetting.setPORT(config.getJSONArray("PORT").toString());
+                    GlobalSetting.setPROT(config.getJSONArray("PROT").toString());
+                    GlobalSetting.setUA(config.getBoolean("UA"));
+                    GlobalSetting.SaveGlobalSetting(MainActivity.this);
+                    file.delete();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+            else{
+                GlobalSetting.LoadGlobalSetting(MainActivity.this);
+            }
+            Log.e("UD",GlobalSetting.UD+"");
+            Log.e("UT",GlobalSetting.UT+"");
+            Log.e("PORT",GlobalSetting.PORT+"");
+            Log.e("PROT",GlobalSetting.PROT+"");
+            Log.e("UA",GlobalSetting.UA+"");
+            if(GlobalSetting.UA){
+                startUplaodEngine();
+            }
+            return null;
+        }
     }
 }
