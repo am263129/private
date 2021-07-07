@@ -1,0 +1,110 @@
+<!--
+  ~ Copyright 2018 The app Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<PreferenceScreen
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory app:title="@string/http_server" app:iconSpaceReserved="false">
+        <EditTextPreference
+            app:key="http_server_port"
+            app:title="@string/http_server_port"
+            app:defaultValue="8080"
+            app:iconSpaceReserved="false"
+            app:useSimpleSummaryProvider="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/udp_exporter" app:iconSpaceReserved="false">
+        <EditTextPreference
+            app:key="collector_ip_address"
+            app:title="@string/receiver_ip_address"
+            app:iconSpaceReserved="false"
+            app:defaultValue="@string/default_collector_ip"
+            app:useSimpleSummaryProvider="true" />
+
+        <EditTextPreference
+            app:key="collector_port"
+            app:title="@string/receiver_port"
+            app:iconSpaceReserved="false"
+            app:defaultValue="@string/default_collector_port"
+            app:useSimpleSummaryProvider="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/proxy" app:iconSpaceReserved="false"  app:key="proxy_prefs">
+        <SwitchPreference
+            app:key="tls_decryption_enabled"
+            app:title="@string/enable_socks5_proxy"
+            app:iconSpaceReserved="false"
+            app:summary="@string/enable_socks5_proxy_summary"
+            app:defaultValue="false" />
+
+        <EditTextPreference
+            app:key="socks5_proxy_ip_address"
+            app:title="@string/proxy_ip_address"
+            app:defaultValue="0.0.0.0"
+            app:iconSpaceReserved="false"
+            app:useSimpleSummaryProvider="true" />
+
+        <EditTextPreference
+            app:key="socks5_proxy_port"
+            app:title="@string/proxy_port"
+            app:iconSpaceReserved="false"
+            app:defaultValue="8050"
+            app:useSimpleSummaryProvider="true" />
+
+        <Preference
+            app:key="tls_how_to"
+            app:title="@string/tls_how_to"
+            app:iconSpaceReserved="false">
+            <intent android:action="android.intent.action.VIEW"
+                android:data="https://emanuele-f.github.io/PCAPdroid/tls_decryption" />
+        </Preference>
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/other_prefs" app:iconSpaceReserved="false" >
+        <DropDownPreference
+            app:key="app_theme"
+            app:title="@string/app_theme"
+            android:entries="@array/app_theme_labels"
+            android:entryValues="@array/app_theme"
+            app:iconSpaceReserved="false"
+            app:defaultValue="system"
+            app:useSimpleSummaryProvider="true"/>
+
+        <DropDownPreference
+            app:key="app_language"
+            app:title="@string/app_language"
+            android:entries="@array/app_languages_labels"
+            android:entryValues="@array/app_languages"
+            app:iconSpaceReserved="false"
+            app:defaultValue="system"
+            app:useSimpleSummaryProvider="true"/>
+
+        <SwitchPreference
+            app:key="root_capture"
+            app:title="@string/root_capture"
+            app:iconSpaceReserved="false"
+            app:summary="@string/root_capture_summary"
+            app:defaultValue="false" />
+
+        <SwitchPreference
+            app:key="ipv6_enabled"
+            app:title="@string/enable_ipv6"
+            app:iconSpaceReserved="false"
+            app:summary="@string/enable_ipv6_summary"
+            app:defaultValue="false" />
+    </PreferenceCategory>
+</PreferenceScreen>
