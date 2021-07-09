@@ -13,6 +13,7 @@ android {
         versionName "1.3.9"
     }
 
+
     buildTypes {
         release {
             minifyEnabled true
@@ -20,12 +21,12 @@ android {
         }
     }
 
-    externalNativeBuild {
-        cmake {
-            path file('src/main/jni/CMakeLists.txt')
-            version "3.21.0"
-        }
-    }
+//    externalNativeBuild {
+//        cmake {
+//            path file('src/main/jni/CMakeLists.txt')
+//            version "3.21.0"
+//        }
+//    }
 
     compileOptions {
         encoding "UTF-8"
@@ -60,4 +61,8 @@ dependencies {
     def aws_version = "2.16.+"
     implementation "com.amazonaws:aws-android-sdk-s3:$aws_version"
     implementation ("com.amazonaws:aws-android-sdk-mobile-client:$aws_version") { transitive = true }
+// Azure
+    implementation 'com.microsoft.azure.android:azure-storage-android:2.0.0@aar'
+
+    implementation 'org.apache.commons:commons-compress:1.20'
 }

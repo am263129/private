@@ -55,6 +55,7 @@ import androidx.preference.PreferenceManager;
 import com.emanuelef.remote_capture.activities.MainActivity;
 import com.emanuelef.remote_capture.model.AppDescriptor;
 import com.emanuelef.remote_capture.model.ConnectionDescriptor;
+import com.emanuelef.remote_capture.model.GlobalSetting;
 import com.emanuelef.remote_capture.model.Prefs;
 import com.emanuelef.remote_capture.model.VPNStats;
 
@@ -685,18 +686,20 @@ public class CaptureService extends VpnService implements Runnable {
     /* Exports a PCAP data chunk */
     public void dumpPcapData(byte[] data) {
 
-        Log.e("dump",new String(data, StandardCharsets.UTF_8));
 
         try {
             File file = new File(getApplicationContext().getFilesDir(), "upload_buffer.pcap");
             if (!file.exists())
                 mBufferOutputStream = new FileOutputStream(file);
+            //do Filter
 
-            if (mBufferFirstStreamWrite) {
-                mBufferOutputStream.write(Utils.hexStringToByteArray(Utils.PCAP_HEADER));
-                mBufferFirstStreamWrite = false;
+            if(Filter(data)){
+                if (mBufferFirstStreamWrite) {
+                    mBufferOutputStream.write(Utils.hexStringToByteArray(Utils.PCAP_HEADER));
+                    mBufferFirstStreamWrite = false;
+                }
+                mBufferOutputStream.write(data);
             }
-            mBufferOutputStream.write(data);
         }catch(Exception e) {
             e.printStackTrace();
         }
@@ -716,6 +719,34 @@ public class CaptureService extends VpnService implements Runnable {
                 stopPacketLoop();
             }
         }
+    }
+
+    public boolean Filter(byte[] data){
+        String[] filterList = GlobalSetting.FILTER.split(",");
+        for(int i = 0;i<filterList.length;i++){
+            //Protocol
+            byte protocol = 0;
+            if(filterList[i].split(":")[1].toLowerCase().equals("tcp")){
+                protocol = Utils.TCP;
+            }
+            if(filterList[i].split(":")[1].toLowerCase().equals("udp")){
+                protocol = Utils.UDP;
+            }
+            if(filterList[i].split(":")[1].toLowerCase().equals("icmp")){
+                protocol = Utils.ICMP;
+            }
+            Log.e("Match Protocol",String.valueOf(protocol));
+            if(protocol == 0 || data[25] != protocol)
+                continue;
+            //Port
+            byte port = (byte) (data[38]<<8 | data[39]);
+            int filterport = (int)(port&0xFFFF);
+            Log.e("Filter PORT",(int)(port&0xFF)+"");
+            if(filterport == Integer.parseInt(filterList[i].split(":")[0]) || filterport == -1){
+                return true;
+            }
+        }
+        return false;
     }
 
     public void reportError(String msg) {

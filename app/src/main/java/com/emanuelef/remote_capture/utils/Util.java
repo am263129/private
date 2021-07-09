@@ -17,7 +17,10 @@ import com.amazonaws.services.s3.AmazonS3Client;
 
 import org.json.JSONException;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,6 +28,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Handles basic helper functions used throughout the app.
@@ -35,6 +40,7 @@ public class Util {
     private AmazonS3Client sS3Client;
     private AWSCredentialsProvider sMobileClient;
     private TransferUtility sTransferUtility;
+    private int BUFFER = 256;
 
     /**
      * Gets an instance of AWSMobileClient which is
@@ -175,5 +181,27 @@ public class Util {
                         + getBytesString(observer.getBytesTotal()));
         map.put("state", observer.getState());
         map.put("percentage", progress + "%");
+    }
+
+
+    public void zip(String files, String zipFileName) {
+        try {
+            BufferedInputStream origin = null;
+            FileOutputStream dest = new FileOutputStream(zipFileName);
+            ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(
+                    dest));
+            byte data[] = new byte[BUFFER];
+            Log.v("Compress", "Adding: " + files);
+            FileInputStream fi = new FileInputStream(files);
+            origin = new BufferedInputStream(fi, BUFFER);
+            int count;
+            while ((count = origin.read(data, 0, BUFFER)) != -1) {
+                out.write(data, 0, count);
+            }
+            origin.close();
+            out.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

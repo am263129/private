@@ -5,7 +5,7 @@
   },
   "S3TransferUtility": {
     "Default": {
-      "Bucket": "rollandks3",
+      "Bucket": "sniffer-app",
       "Region": "us-west-2"
     }
   }

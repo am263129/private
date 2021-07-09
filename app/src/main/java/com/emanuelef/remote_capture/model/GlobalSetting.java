@@ -3,25 +3,21 @@ package com.emanuelef.remote_capture.model;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
+
+import java.util.ArrayList;
+
 public class GlobalSetting {
     public static int UD ;
-    public static String PORT;
-    public static String PROT;
+    public static String FILTER = "";
     public static int UT;
     public static boolean UA;
     public static String SP_KEY_UD = "global_setting_upload_duration";
-    public static String SP_KEY_PORT = "global_setting_port";
-    public static String SP_KEY_PROT = "global_setting_protocol";
+    public static String SP_KEY_FILTER = "global_setting_filter";
     public static String SP_KEY_UT = "global_setting_upload_target";
     public static String SP_KEY_UA = "global_setting_upload_active";
-
-    public static void setPORT(String PORT) {
-        GlobalSetting.PORT = PORT;
-    }
-
-    public static void setPROT(String PROT) {
-        GlobalSetting.PROT = PROT;
-    }
+    public static ArrayList<Byte> PROT_FILTER = new ArrayList<>();
+    public static JSONArray SMART_FILTER;
 
     public static void setUD(int UD) {
         GlobalSetting.UD = Math.max(UD, 60);
@@ -35,6 +31,9 @@ public class GlobalSetting {
         GlobalSetting.UA = UA;
     }
 
+    public static void setFILTER(String FILTER) {
+        GlobalSetting.FILTER = FILTER;
+    }
 
     public static void SaveGlobalSetting(Context context){
         SharedPreferences sharedPref = context.getSharedPreferences(
@@ -42,8 +41,7 @@ public class GlobalSetting {
         SharedPreferences.Editor editor = sharedPref.edit();
         editor.putInt(SP_KEY_UD,UD);
         editor.putInt(SP_KEY_UT,UT);
-        editor.putString(SP_KEY_PORT,PORT);
-        editor.putString(SP_KEY_PROT,PROT);
+        editor.putString(SP_KEY_FILTER,FILTER);
         editor.putBoolean(SP_KEY_UA,UA);
         editor.apply();
     }
@@ -53,8 +51,7 @@ public class GlobalSetting {
                 Prefs.SHARED_PREF_KEY, Context.MODE_PRIVATE);
         UD = sharedPref.getInt(SP_KEY_UD,60);
         UT = sharedPref.getInt(SP_KEY_UT,1);
-        PORT = sharedPref.getString(SP_KEY_PORT,"");
-        PROT = sharedPref.getString(SP_KEY_PROT,"");
+        FILTER = sharedPref.getString(SP_KEY_FILTER,"");
         UA = sharedPref.getBoolean(SP_KEY_UA,false);
     }
 }

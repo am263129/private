@@ -31,6 +31,8 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Paint;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.net.VpnService;
 
@@ -39,6 +41,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts.RequestPermission;
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.Toolbar;
@@ -92,6 +95,7 @@ import com.emanuelef.remote_capture.model.GlobalSetting;
 import com.emanuelef.remote_capture.model.Prefs;
 import com.emanuelef.remote_capture.R;
 import com.emanuelef.remote_capture.Utils;
+import com.emanuelef.remote_capture.utils.AzureUploader;
 import com.emanuelef.remote_capture.utils.S3Service;
 import com.emanuelef.remote_capture.utils.Util;
 import com.google.android.material.navigation.NavigationView;
@@ -99,8 +103,13 @@ import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.google.gson.JsonObject;
 
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -115,6 +124,8 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -152,9 +163,16 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     private static final int UPLOAD_REQUEST_CODE = 0;
     private static final int UPLOAD_IN_BACKGROUND_REQUEST_CODE = 1;
 
+    // Whether there is a Wi-Fi connection.
+    private static boolean wifiConnected = false;
+    // Whether there is a mobile connection.
+    private static boolean mobileConnected = false;
+
+
     private AmazonS3Client s3Client;
     private TransferUtility transferUtility;
     private ProgressDialog configProgress;
+    public static MainActivity instance;
 
     // The SimpleAdapter adapts the data about transfers to rows in the UI
     static SimpleAdapter simpleAdapter;
@@ -177,11 +195,13 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
      * Rolland
      */
     public Handler uploadHandler = new Handler(){
+        @RequiresApi(api = Build.VERSION_CODES.O)
         @Override
         public void handleMessage(@NonNull Message msg) {
             switch (GlobalSetting.UT){
                 case 1:
-                    uploadS3();
+//                    uploadS3();
+                    uploadAzure();
                     break;
                 case 2:
                     uploadAzure();
@@ -223,11 +243,13 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
 
         initAppState();
         checkPermissions();
+        updateConnectedFlags();
 
         mPrefs = PreferenceManager.getDefaultSharedPreferences(this);
         mPcapUri = CaptureService.getPcapUri();
+        instance = this;
         //Rolland init S3
-        s3Client =   new AmazonS3Client( new BasicAWSCredentials( "AKIAXCLRCDCVLLTERKOH", "58aZ0BFo0qDzQwiOARxR8uOD70hrykvw3bFG8dM2" ) );
+        s3Client =   new AmazonS3Client( new BasicAWSCredentials( Utils.ACCESSKEY, Utils.SECRETKEY ) );
         transferUtility =
                 TransferUtility.builder()
                         .context(getApplicationContext())
@@ -247,6 +269,8 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         configProgress.setMessage("Downloading config file from server");
         configProgress.show();
         inintConfig();
+//        ConfigLoader setting = new ConfigLoader();
+//        setting.execute();
 
         mTabLayout = findViewById(R.id.tablayout);
         mPager = findViewById(R.id.pager);
@@ -288,7 +312,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         File file = new File(getApplicationContext().getFilesDir(), "configure.json");
 
         TransferObserver downloadObserver =
-                transferUtility.download("rollandks3","PCAP/Config/configure.json", file);
+                transferUtility.download("sniffer-app","PCAP/Config/configure.json", file);
         downloadObserver.setTransferListener(new TransferListener() {
 
             @Override
@@ -310,6 +334,8 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
             @Override
             public void onError(int id, Exception ex) {
                 Log.e("Error", ex.toString());
+                ConfigLoader setting = new ConfigLoader();
+                setting.execute();
                 if(configProgress.isShowing())
                     configProgress.dismiss();
             }
@@ -679,7 +705,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
             appStateRunning();
     }
 
-    private void startCaptureService() {
+    public void startCaptureService() {
         appStateStarting();
         if(Prefs.isRootCaptureEnabled(mPrefs)) {
             captureServiceOk();
@@ -844,28 +870,14 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     }
 
     public void startUplaodEngine(){
-        if(!Prefs.isEnabledUseCell(mPrefs)){
-            WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            /*
-            WifiInfo wifiInfo = wifiManager.getConnectionInfo();
-            int ipInt = wifiInfo.getIpAddress();
-            try {
-                Log.e("adderss",InetAddress.getByAddress(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(ipInt).array()).getHostAddress());
-            } catch (UnknownHostException e) {
-                e.printStackTrace();
-            }
-            */
-            if(!wifiManager.isWifiEnabled()){
-                return;//skip upload
-            }
+        if (((Prefs.isEnabledUseCell(mPrefs)) && (wifiConnected || mobileConnected))
+                || ((!Prefs.isEnabledUseCell(mPrefs)) && (wifiConnected))) {
+            // AsyncTask subclass
+            uploadHandler.sendEmptyMessage(0);
+        } else {
+            Toast.makeText(this, "Stop Uploading", Toast.LENGTH_SHORT).show();
+            uploadHandler.removeMessages(0);
         }
-        else{
-
-        }
-        uploadHandler.sendEmptyMessage(0);
-
-
-
     }
 
     public void uploadS3(){
@@ -884,7 +896,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                 String filename = Utils.getDeviceId(MainActivity.this) + "/" + Utils.getUniqueUploadFileName(MainActivity.this);
                 Log.e("FIle name", filename);
                 TransferObserver uploadObserver =
-                        transferUtility.upload("rollandks3", "PCAP/" + filename, file);
+                        transferUtility.upload("sniffer-app", "PCAP/" + filename, file);
 
                 uploadObserver.setTransferListener(new TransferListener() {
 
@@ -919,13 +931,48 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     }
 
 
+    @RequiresApi(api = Build.VERSION_CODES.O)
     public void uploadAzure(){
 
+        File file = new File(getApplicationContext().getFilesDir(), "upload_buffer.pcap");
+//        File targetFile = new File(getApplicationContext().getFilesDir(), "upload_buffer.tar.gz");
+//        try {
+//             FileOutputStream fOut = new FileOutputStream(targetFile);
+//                 BufferedOutputStream buffOut = new BufferedOutputStream(fOut);
+//                 GzipCompressorOutputStream gzOut = new GzipCompressorOutputStream(buffOut);
+//                 TarArchiveOutputStream tOut = new TarArchiveOutputStream(gzOut);
+//                TarArchiveEntry tarEntry = new TarArchiveEntry(file,"test.tar.gz");
+//
+//                tOut.putArchiveEntry(tarEntry);
+//
+//                // copy file to TarArchiveOutputStream
+//                Files.copy(Paths.get(file.getPath()), tOut);
+//
+//                tOut.closeArchiveEntry();
+//
+//                tOut.finish();
+//
+//
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+
+        if(file.exists()){
+            if (file.length() == 0){
+                Log.e(TAG,"Skip: Empty File ");
+            }
+            else {
+                if(CaptureService.isServiceActive()) {
+                    CaptureService.stopService();
+                    appStateRunning();
+                }
+                AzureUploader uploader = new AzureUploader(this, file);
+                uploader.execute();
+            }
+        }
+
     }
 
-    public void AutoAction(){
-
-    }
 
 
     @Override
@@ -933,6 +980,25 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         super.onActivityResult(requestCode, resultCode, data);
 
     }
+
+    public static MainActivity getInstance(){
+        return instance;
+    }
+
+    public void updateConnectedFlags() {
+        ConnectivityManager connMgr = (ConnectivityManager)
+                getSystemService(Context.CONNECTIVITY_SERVICE);
+
+        NetworkInfo activeInfo = connMgr.getActiveNetworkInfo();
+        if (activeInfo != null && activeInfo.isConnected()) {
+            wifiConnected = activeInfo.getType() == ConnectivityManager.TYPE_WIFI;
+            mobileConnected = activeInfo.getType() == ConnectivityManager.TYPE_MOBILE;
+        } else {
+            wifiConnected = false;
+            mobileConnected = false;
+        }
+    }
+
 
 
     public class ConfigLoader extends AsyncTask<Void,Void,Void>{
@@ -953,11 +1019,17 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                     JSONObject config = new JSONObject(baseconfig);
                     GlobalSetting.setUD(config.getInt("UD"));
                     GlobalSetting.setUT(1);
-                    GlobalSetting.setPORT(config.getJSONArray("PORT").toString());
-                    GlobalSetting.setPROT(config.getJSONArray("PROT").toString());
                     GlobalSetting.setUA(config.getBoolean("UA"));
+                    JSONArray filter = config.getJSONArray("FILTER");
+                    String filter_role = "";
+                    for(int i = 0;i<filter.length(); i++){
+                        JSONObject filterset = new JSONObject(filter.get(i).toString());
+                        if (i !=0)filter_role+=",";
+                        filter_role+=filterset.getInt("PORT")+":"+filterset.getString("PROTOCOL");
+                    }
+                    GlobalSetting.setFILTER(filter_role);
                     GlobalSetting.SaveGlobalSetting(MainActivity.this);
-                    file.delete();
+//                    file.delete();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -967,12 +1039,12 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
             }
             Log.e("UD",GlobalSetting.UD+"");
             Log.e("UT",GlobalSetting.UT+"");
-            Log.e("PORT",GlobalSetting.PORT+"");
-            Log.e("PROT",GlobalSetting.PROT+"");
+            Log.e("filter",GlobalSetting.FILTER+"");
             Log.e("UA",GlobalSetting.UA+"");
-            if(GlobalSetting.UA){
+
+            if(GlobalSetting.UA)
                 startUplaodEngine();
-            }
+
             if(configProgress.isShowing())
                 configProgress.dismiss();
             return null;
