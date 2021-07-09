@@ -43,7 +43,8 @@ public class Prefs {
     public static final String PREF_APP_THEME = "app_theme";
     public static final String PREF_ROOT_CAPTURE = "root_capture";
     public static final String PREF_WHITELIST = "whitelist";
-
+    //Rolland Added
+    public static final String PREF_CELL_USE_ENABLED_KEY = "cell_use_enabled";
     public enum DumpMode {
         NONE,
         HTTP_SERVER,
@@ -74,4 +75,5 @@ public class Prefs {
     public static boolean getIPv6Enabled(SharedPreferences p)    { return(p.getBoolean(PREF_IPV6_ENABLED, false)); }
     public static boolean useEnglishLanguage(SharedPreferences p){ return("english".equals(p.getString(PREF_APP_LANGUAGE, "system")));}
     public static boolean isRootCaptureEnabled(SharedPreferences p) { return(Utils.isRootAvailable() && p.getBoolean(PREF_ROOT_CAPTURE, false)); }
+    public static boolean isEnabledUseCell(SharedPreferences p){ return p.getBoolean(PREF_CELL_USE_ENABLED_KEY,true);}
 }

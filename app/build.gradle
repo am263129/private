@@ -20,12 +20,12 @@ android {
         }
     }
 
-//    externalNativeBuild {
-//        cmake {
-//            path file('src/main/jni/CMakeLists.txt')
-//            version "3.21.0"
-//        }
-//    }
+    externalNativeBuild {
+        cmake {
+            path file('src/main/jni/CMakeLists.txt')
+            version "3.21.0"
+        }
+    }
 
     compileOptions {
         encoding "UTF-8"
@@ -56,4 +56,8 @@ dependencies {
     implementation 'cat.ereza:customactivityoncrash:2.3.0'
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
     implementation 'com.google.apis:google-api-services-drive:v3-rev110-1.23.0'
+// AWS
+    def aws_version = "2.16.+"
+    implementation "com.amazonaws:aws-android-sdk-s3:$aws_version"
+    implementation ("com.amazonaws:aws-android-sdk-mobile-client:$aws_version") { transitive = true }
 }

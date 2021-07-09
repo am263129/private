@@ -1,0 +1,12 @@
+{
+  "Version": "1.0",
+  "IdentityManager": {
+    "Default": {}
+  },
+  "S3TransferUtility": {
+    "Default": {
+      "Bucket": "rollandks3",
+      "Region": "us-west-2"
+    }
+  }
+}

@@ -23,6 +23,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.InputType;
+import android.util.Log;
 import android.util.Patterns;
 import android.view.MenuItem;
 
@@ -35,6 +36,7 @@ import androidx.preference.PreferenceManager;
 import androidx.preference.SwitchPreference;
 
 import com.emanuelef.remote_capture.Utils;
+import com.emanuelef.remote_capture.model.GlobalSetting;
 import com.emanuelef.remote_capture.model.Prefs;
 import com.emanuelef.remote_capture.R;
 
@@ -85,10 +87,12 @@ public class SettingsActivity extends BaseActivity {
     public static class SettingsFragment extends PreferenceFragmentCompat {
         private SwitchPreference mTlsDecryptionEnabled; // TODO rename
         private SwitchPreference mRootCaptureEnabled;
+        private SwitchPreference mCellUseEnabled;
         private EditTextPreference mSocks5ProxyIp;
         private EditTextPreference mSocks5ProxyPort;
         private Preference mTlsHelp;
         private Preference mProxyPrefs;
+        private Preference mCellUsage;
         private Preference mIpv6Enabled;
 
         @Override
@@ -97,6 +101,7 @@ public class SettingsActivity extends BaseActivity {
 
             setupUdpExporterPrefs();
             setupHttpServerPrefs();
+            setupCellUsagePrefs();
             setupSocks5ProxyPrefs();
             setupOtherPrefs();
 
@@ -133,6 +138,14 @@ public class SettingsActivity extends BaseActivity {
             mHttpServerPort.setOnPreferenceChangeListener((preference, newValue) -> validatePort(newValue.toString()));
         }
 
+        private void setupCellUsagePrefs(){
+            mCellUsage = findPreference("cell_prefs");
+            mCellUseEnabled = findPreference(Prefs.PREF_CELL_USE_ENABLED_KEY);
+            mCellUseEnabled.setOnPreferenceChangeListener((preference, newValue) -> {
+                Log.e("new value",newValue+"");
+                return true;
+            });
+        }
         private void setupSocks5ProxyPrefs() {
             mProxyPrefs = findPreference("proxy_prefs");
             mTlsHelp = findPreference("tls_how_to");

@@ -24,7 +24,7 @@ public class GlobalSetting {
     }
 
     public static void setUD(int UD) {
-        GlobalSetting.UD = UD;
+        GlobalSetting.UD = Math.max(UD, 60);
     }
 
     public static void setUT(int UT) {

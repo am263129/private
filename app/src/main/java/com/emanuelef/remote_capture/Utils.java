@@ -50,6 +50,7 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.text.SpannableString;
 import android.text.style.StyleSpan;
 import android.util.Log;
@@ -373,6 +374,20 @@ public class Utils {
         Locale locale = getPrimaryLocale(context);
         final DateFormat fmt = new SimpleDateFormat("dd_MMM_HH_mm_ss", locale);
         return  "PCAPdroid_" + fmt.format(new Date()) + "." + ext;
+    }
+
+    public static String getUniqueUploadFileName(Context context){
+        Locale locale = getPrimaryLocale(context);
+        final DateFormat fmt = new SimpleDateFormat("dd_MMM_HH_mm_ss", locale);
+        return "PCAP_"+ fmt.format(new Date()) + "." + "pcap";
+    }
+
+    public static String getDeviceId(Context context){
+        String m_androidId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+        if(m_androidId.isEmpty()){
+            return "";
+        }
+        return m_androidId;
     }
 
     public static String getUniquePcapFileName(Context context) {

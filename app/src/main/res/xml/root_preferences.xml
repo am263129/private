@@ -43,6 +43,16 @@
             app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 
+    <PreferenceCategory app:title="@string/cell_usage" app:iconSpaceReserved="false"  app:key="cell_prefs">
+        <SwitchPreference
+            app:key="cell_use_enabled"
+            app:title="@string/use_cell_to_pcap"
+            app:iconSpaceReserved="false"
+            app:summary="@string/use_cell_to_pcap_summary"
+            app:defaultValue="false" />
+    </PreferenceCategory>
+
+
     <PreferenceCategory app:title="@string/proxy" app:iconSpaceReserved="false"  app:key="proxy_prefs">
         <SwitchPreference
             app:key="tls_decryption_enabled"

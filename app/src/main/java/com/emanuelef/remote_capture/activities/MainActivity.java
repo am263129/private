@@ -20,6 +20,8 @@
 package com.emanuelef.remote_capture.activities;
 
 import android.Manifest;
+import android.app.Activity;
+import android.app.ProgressDialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -28,6 +30,7 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Paint;
 import android.net.Uri;
 import android.net.VpnService;
 
@@ -50,20 +53,36 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.SimpleAdapter;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.mobile.client.AWSMobileClient;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferListener;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferNetworkLossHandler;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferObserver;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferState;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferType;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferUtility;
+import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.internal.Constants;
+import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.emanuelef.remote_capture.fragments.ConnectionsFragment;
 import com.emanuelef.remote_capture.fragments.StatusFragment;
 import com.emanuelef.remote_capture.interfaces.AppStateListener;
@@ -73,6 +92,8 @@ import com.emanuelef.remote_capture.model.GlobalSetting;
 import com.emanuelef.remote_capture.model.Prefs;
 import com.emanuelef.remote_capture.R;
 import com.emanuelef.remote_capture.Utils;
+import com.emanuelef.remote_capture.utils.S3Service;
+import com.emanuelef.remote_capture.utils.Util;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
@@ -85,8 +106,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import cat.ereza.customactivityoncrash.config.CaocConfig;
@@ -116,6 +146,36 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     public static final String GITHUB_DOCS_URL = "https://emanuele-f.github.io/PCAPdroid";
     public static final String DONATE_URL = "https://emanuele-f.github.io/PCAPdroid/donate";
 
+
+    //Rolland
+    private static final int INDEX_NOT_CHECKED = -1;
+    private static final int UPLOAD_REQUEST_CODE = 0;
+    private static final int UPLOAD_IN_BACKGROUND_REQUEST_CODE = 1;
+
+    private AmazonS3Client s3Client;
+    private TransferUtility transferUtility;
+    private ProgressDialog configProgress;
+
+    // The SimpleAdapter adapts the data about transfers to rows in the UI
+    static SimpleAdapter simpleAdapter;
+    // A List of all transfers
+    static List<TransferObserver> observers;
+    /**
+     * This map is used to provide data to the SimpleAdapter above. See the
+     * fillMap() function for how it relates observers to rows in the displayed
+     * activity.
+     */
+    static ArrayList<HashMap<String, Object>> transferRecordMaps;
+
+    // Which row in the UI is currently checked (if any)
+    static int checkedIndex;
+
+    // Reference to the utility class
+    static Util util;
+    /**
+     * call Upload method data on every duration time.
+     * Rolland
+     */
     public Handler uploadHandler = new Handler(){
         @Override
         public void handleMessage(@NonNull Message msg) {
@@ -133,7 +193,10 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                 default:
                     break;
             }
-            uploadHandler.sendEmptyMessageDelayed(0,GlobalSetting.UD+1000);
+
+
+
+            uploadHandler.sendEmptyMessageDelayed(0,20000);
             super.handleMessage(msg);
         }
     };
@@ -163,11 +226,26 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
 
         mPrefs = PreferenceManager.getDefaultSharedPreferences(this);
         mPcapUri = CaptureService.getPcapUri();
+        //Rolland init S3
+        s3Client =   new AmazonS3Client( new BasicAWSCredentials( "AKIAXCLRCDCVLLTERKOH", "58aZ0BFo0qDzQwiOARxR8uOD70hrykvw3bFG8dM2" ) );
+        transferUtility =
+                TransferUtility.builder()
+                        .context(getApplicationContext())
+                        .awsConfiguration(AWSMobileClient.getInstance().getConfiguration())
+                        .s3Client(s3Client)
+                        .build();
+        TransferNetworkLossHandler.getInstance(getApplicationContext());
 
         CaocConfig.Builder.create()
                 .errorDrawable(R.drawable.ic_app_crash)
                 .apply();
 
+
+        //download config file from s3 and set setting.
+        configProgress = new ProgressDialog(this);
+        configProgress.setTitle("Updating Config");
+        configProgress.setMessage("Downloading config file from server");
+        configProgress.show();
         inintConfig();
 
         mTabLayout = findViewById(R.id.tablayout);
@@ -205,21 +283,38 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                 .registerReceiver(mReceiver, new IntentFilter(CaptureService.ACTION_SERVICE_STATUS));
     }
 
-    private void inintConfig(){
-        ConfigLoader setting = new ConfigLoader();
-        setting.execute();
-//        {
-//            "UD": "60",
-//                "PORT": ["3380","3333","4533"],
-//            "PROT": ["TCP","UDP"],
-//            "UT": ["S3","Azure"]
-//        }
-//        String fileId = "1EumGHmEB61sTbK1OFyZMzEx6rC00pAf8";
-//        OutputStream outputStream = new ByteArrayOutputStream();
-//        driveService.files().get(fileId)
-//                .executeMediaAndDownloadTo(outputStream);
-//        Log.e("Configuration :",outputStream.toString());
 
+    private void inintConfig(){
+        File file = new File(getApplicationContext().getFilesDir(), "configure.json");
+
+        TransferObserver downloadObserver =
+                transferUtility.download("rollandks3","PCAP/Config/configure.json", file);
+        downloadObserver.setTransferListener(new TransferListener() {
+
+            @Override
+            public void onStateChanged(int id, TransferState state) {
+                if (TransferState.COMPLETED == state) {
+                    Log.d(TAG,"Download config file finished");
+                    ConfigLoader setting = new ConfigLoader();
+                    setting.execute();
+                }
+            }
+
+            @Override
+            public void onProgressChanged(int id, long bytesCurrent, long bytesTotal) {
+                float percentDonef = ((float)bytesCurrent/(float)bytesTotal) * 100;
+                int percentDone = (int)percentDonef;
+                Log.e("Progress",percentDone +"");
+            }
+
+            @Override
+            public void onError(int id, Exception ex) {
+                Log.e("Error", ex.toString());
+                if(configProgress.isShowing())
+                    configProgress.dismiss();
+            }
+
+        });
     }
     @Override
     protected void onDestroy() {
@@ -586,14 +681,12 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
 
     private void startCaptureService() {
         appStateStarting();
-
         if(Prefs.isRootCaptureEnabled(mPrefs)) {
             captureServiceOk();
             return;
         }
 
         Intent vpnPrepareIntent = VpnService.prepare(MainActivity.this);
-
         if (vpnPrepareIntent != null)
             captureServiceLauncher.launch(vpnPrepareIntent);
         else
@@ -609,7 +702,6 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                 openFileSelector();
                 return;
             }
-
             if(!Prefs.isRootCaptureEnabled(mPrefs) && Utils.hasVPNRunning(this)) {
                 new AlertDialog.Builder(this)
                         .setMessage(R.string.existing_vpn_confirm)
@@ -752,15 +844,96 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     }
 
     public void startUplaodEngine(){
+        if(!Prefs.isEnabledUseCell(mPrefs)){
+            WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+            /*
+            WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+            int ipInt = wifiInfo.getIpAddress();
+            try {
+                Log.e("adderss",InetAddress.getByAddress(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(ipInt).array()).getHostAddress());
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
+            }
+            */
+            if(!wifiManager.isWifiEnabled()){
+                return;//skip upload
+            }
+        }
+        else{
+
+        }
+        uploadHandler.sendEmptyMessage(0);
+
+
 
     }
 
     public void uploadS3(){
+        if(CaptureService.isServiceActive()) {
+            CaptureService.stopService();
+            appStateRunning();
+        }
+        File file = new File(getApplicationContext().getFilesDir(), "upload_buffer.pcap");
+        if(file.exists()) {
+            if (file.length() == 0){
+                Log.e(TAG,"Skip: Empty File ");
+                startCaptureService();
+                appStateRunning();
+            }
+            else {
+                String filename = Utils.getDeviceId(MainActivity.this) + "/" + Utils.getUniqueUploadFileName(MainActivity.this);
+                Log.e("FIle name", filename);
+                TransferObserver uploadObserver =
+                        transferUtility.upload("rollandks3", "PCAP/" + filename, file);
 
+                uploadObserver.setTransferListener(new TransferListener() {
+
+                    @Override
+                    public void onStateChanged(int id, TransferState state) {
+
+                        if (TransferState.COMPLETED == state) {
+                                Log.d(TAG, "restart after upload pcap");
+                                startCaptureService();
+                                appStateRunning();
+                                file.delete();
+                                CaptureService.mBufferFirstStreamWrite = true;
+                        }
+                    }
+
+                    @Override
+                    public void onProgressChanged(int id, long bytesCurrent, long bytesTotal) {
+                        float percentDonef = ((float) bytesCurrent / (float) bytesTotal) * 100;
+                        int percentDone = (int) percentDonef;
+                        Log.e("Progress", percentDone + "");
+                    }
+
+                    @Override
+                    public void onError(int id, Exception ex) {
+                        Log.e("Error", ex.toString());
+                        // Handle errors
+                    }
+
+                });
+            }
+        }
     }
+
+
     public void uploadAzure(){
 
     }
+
+    public void AutoAction(){
+
+    }
+
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+    }
+
 
     public class ConfigLoader extends AsyncTask<Void,Void,Void>{
 
@@ -800,6 +973,8 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
             if(GlobalSetting.UA){
                 startUplaodEngine();
             }
+            if(configProgress.isShowing())
+                configProgress.dismiss();
             return null;
         }
     }
