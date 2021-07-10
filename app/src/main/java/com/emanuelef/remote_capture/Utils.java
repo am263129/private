@@ -89,8 +89,33 @@ public class Utils {
     public static final String PCAP_HEADER = "d4c3b2a1020004000000000000000000ffff000065000000";
     public static final int UID_UNKNOWN = -1;
     public static final int UID_NO_FILTER = -2;
+    public static final String ACCESSKEY = "KEY";
+    public static final String SECRETKEY = "ACCESSKEY";
     private static Boolean rootAvailable = null;
     private static Locale primaryLocale = null;
+
+    public static final String storageConnectionString = "AZURECONNECTION";
+
+
+    public static final byte ICMP = 0x01;
+    public static final byte IGMP = 0x02;
+    public static final byte GGP = 0x03;
+    public static final byte IPIP = 0x04;
+    public static final byte STREAM = 0x05;
+    public static final byte TCP = 0x06;
+    public static final byte CBT = 0x07;
+    public static final byte EGP = 0x08;
+    public static final byte IGRP = 0x09;
+    public static final byte CHAOS = 0x10;
+    public static final byte UDP = 0x11;
+    public static final byte MULTIPLEX = 0x12;
+    public static final byte DCN = 0x13;
+    public static final byte HOSTMONITER = 0x14;
+    public static final byte PACKETRATIO = 0x15;
+    public static final byte IDP = 0x16;
+    public static final byte LEAF = 0x19;
+
+
 
     public static String formatBytes(long bytes) {
         long divisor;
@@ -379,7 +404,7 @@ public class Utils {
     public static String getUniqueUploadFileName(Context context){
         Locale locale = getPrimaryLocale(context);
         final DateFormat fmt = new SimpleDateFormat("dd_MMM_HH_mm_ss", locale);
-        return "PCAP_"+ fmt.format(new Date()) + "." + "pcap";
+        return "PCAP_"+ fmt.format(new Date()) + "." + "zip";
     }
 
     public static String getDeviceId(Context context){

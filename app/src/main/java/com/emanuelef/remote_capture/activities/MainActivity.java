@@ -83,6 +83,8 @@ import com.amazonaws.mobileconnectors.s3.transferutility.TransferObserver;
 import com.amazonaws.mobileconnectors.s3.transferutility.TransferState;
 import com.amazonaws.mobileconnectors.s3.transferutility.TransferType;
 import com.amazonaws.mobileconnectors.s3.transferutility.TransferUtility;
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.internal.Constants;
 import com.amazonaws.services.s3.model.PutObjectRequest;
@@ -98,6 +100,7 @@ import com.emanuelef.remote_capture.Utils;
 import com.emanuelef.remote_capture.utils.AzureUploader;
 import com.emanuelef.remote_capture.utils.S3Service;
 import com.emanuelef.remote_capture.utils.Util;
+import com.emanuelef.remote_capture.utils.makeZip;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
@@ -126,9 +129,13 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
+import java.util.zip.ZipOutputStream;
 
 import cat.ereza.customactivityoncrash.config.CaocConfig;
 
@@ -162,18 +169,20 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     private static final int INDEX_NOT_CHECKED = -1;
     private static final int UPLOAD_REQUEST_CODE = 0;
     private static final int UPLOAD_IN_BACKGROUND_REQUEST_CODE = 1;
-
+    private boolean humanServiceRun = false;
+    private boolean humanDisable = false;
     // Whether there is a Wi-Fi connection.
     private static boolean wifiConnected = false;
     // Whether there is a mobile connection.
     private static boolean mobileConnected = false;
+    private static boolean uploadData = true;
+    private NetworkReceiver receiver = new NetworkReceiver();
 
 
     private AmazonS3Client s3Client;
     private TransferUtility transferUtility;
     private ProgressDialog configProgress;
     public static MainActivity instance;
-
     // The SimpleAdapter adapts the data about transfers to rows in the UI
     static SimpleAdapter simpleAdapter;
     // A List of all transfers
@@ -190,6 +199,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
 
     // Reference to the utility class
     static Util util;
+
     /**
      * call Upload method data on every duration time.
      * Rolland
@@ -198,10 +208,10 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         @RequiresApi(api = Build.VERSION_CODES.O)
         @Override
         public void handleMessage(@NonNull Message msg) {
+            CreateUploadFile();
             switch (GlobalSetting.UT){
                 case 1:
-//                    uploadS3();
-                    uploadAzure();
+                    uploadS3();
                     break;
                 case 2:
                     uploadAzure();
@@ -214,12 +224,42 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                     break;
             }
 
-
-
-            uploadHandler.sendEmptyMessageDelayed(0,20000);
+            if (uploadData && humanServiceRun) {
+                Log.e(TAG,"Start Auto Upload engine");
+                uploadHandler.sendEmptyMessageDelayed(0,GlobalSetting.UD*1000);
+            } else {
+                Toast.makeText(MainActivity.this, "Stop Uploading", Toast.LENGTH_SHORT).show();
+                Log.e(TAG,"Stop Uploading");
+                uploadHandler.removeMessages(0);
+            }
             super.handleMessage(msg);
         }
     };
+    /**
+     * when downloading is not responding with in 5
+     * set config manually.
+     */
+    public Handler configHandler = new Handler(){
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            ConfigLoader configLoader = new ConfigLoader();
+            configLoader.execute();
+            super.handleMessage(msg);
+        }
+    };
+
+    public Handler EngineHandler = new Handler(){
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            humanDisable = false;
+            if(humanServiceRun){
+                Log.e(TAG,"Resume service");
+                startCaptureService();
+            }
+            super.handleMessage(msg);
+        }
+    };
+
     private final ActivityResultLauncher<Intent> captureServiceLauncher =
             registerForActivityResult(new StartActivityForResult(), this::captureServiceResult);
     private final ActivityResultLauncher<Intent> pcapFileLauncher =
@@ -249,7 +289,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         mPcapUri = CaptureService.getPcapUri();
         instance = this;
         //Rolland init S3
-        s3Client =   new AmazonS3Client( new BasicAWSCredentials( Utils.ACCESSKEY, Utils.SECRETKEY ) );
+        s3Client =   new AmazonS3Client( new BasicAWSCredentials( Utils.ACCESSKEY, Utils.SECRETKEY ),Region.getRegion(Regions.US_WEST_2));
         transferUtility =
                 TransferUtility.builder()
                         .context(getApplicationContext())
@@ -276,6 +316,10 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         mPager = findViewById(R.id.pager);
 
         setupTabs();
+
+        IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
+        receiver = new NetworkReceiver();
+        this.registerReceiver(receiver, filter);
 
         /* Register for service status */
         mReceiver = new BroadcastReceiver() {
@@ -308,16 +352,20 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     }
 
 
+    /**
+     * Download config file from AWS server.
+     */
     private void inintConfig(){
+        configHandler.sendEmptyMessageDelayed(0,5000);
         File file = new File(getApplicationContext().getFilesDir(), "configure.json");
-
         TransferObserver downloadObserver =
-                transferUtility.download("sniffer-app","PCAP/Config/configure.json", file);
+                transferUtility.download("sniffer-app","Config/configure.json", file);
         downloadObserver.setTransferListener(new TransferListener() {
 
             @Override
             public void onStateChanged(int id, TransferState state) {
                 if (TransferState.COMPLETED == state) {
+                    configHandler.removeMessages(0);
                     Log.d(TAG,"Download config file finished");
                     ConfigLoader setting = new ConfigLoader();
                     setting.execute();
@@ -334,6 +382,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
             @Override
             public void onError(int id, Exception ex) {
                 Log.e("Error", ex.toString());
+                configHandler.removeMessages(0);
                 ConfigLoader setting = new ConfigLoader();
                 setting.execute();
                 if(configProgress.isShowing())
@@ -646,7 +695,15 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         int id = item.getItemId();
 
         if(id == R.id.action_start) {
-            toggleService();
+            humanServiceRun = !CaptureService.isServiceActive();
+            if(humanServiceRun && GlobalSetting.UA){
+                uploadHandler.sendEmptyMessageDelayed(0,GlobalSetting.UD * 1000);
+            }
+            if(!humanDisable || CaptureService.isServiceActive())
+                toggleService();
+            else {
+                Toast.makeText(this,"Please wait for a while",Toast.LENGTH_SHORT).show();
+            }
             return true;
         } else if (id == R.id.action_settings) {
             Intent intent = new Intent(MainActivity.this, SettingsActivity.class);
@@ -720,10 +777,12 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     }
 
     public void toggleService() {
+
         if (CaptureService.isServiceActive()) {
             appStateStopping();
             CaptureService.stopService();
         } else {
+
             if((mPcapUri == null) && (Prefs.getDumpMode(mPrefs) == Prefs.DumpMode.PCAP_FILE)) {
                 openFileSelector();
                 return;
@@ -870,61 +929,50 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     }
 
     public void startUplaodEngine(){
-        if (((Prefs.isEnabledUseCell(mPrefs)) && (wifiConnected || mobileConnected))
-                || ((!Prefs.isEnabledUseCell(mPrefs)) && (wifiConnected))) {
-            // AsyncTask subclass
-            uploadHandler.sendEmptyMessage(0);
-        } else {
-            Toast.makeText(this, "Stop Uploading", Toast.LENGTH_SHORT).show();
-            uploadHandler.removeMessages(0);
-        }
+        uploadHandler.sendEmptyMessage(0);
     }
 
     public void uploadS3(){
-        if(CaptureService.isServiceActive()) {
-            CaptureService.stopService();
-            appStateRunning();
-        }
-        File file = new File(getApplicationContext().getFilesDir(), "upload_buffer.pcap");
+
+        File file = new File(getApplicationContext().getFilesDir(), "s3_buffer.zip");
         if(file.exists()) {
             if (file.length() == 0){
                 Log.e(TAG,"Skip: Empty File ");
-                startCaptureService();
-                appStateRunning();
             }
             else {
+                if(CaptureService.isServiceActive()) {
+                    CaptureService.stopService();
+                }
+                UploadProof();
                 String filename = Utils.getDeviceId(MainActivity.this) + "/" + Utils.getUniqueUploadFileName(MainActivity.this);
                 Log.e("FIle name", filename);
                 TransferObserver uploadObserver =
                         transferUtility.upload("sniffer-app", "PCAP/" + filename, file);
-
+                EngineHandler.sendEmptyMessageDelayed(0,20000);
+                humanDisable = true;
                 uploadObserver.setTransferListener(new TransferListener() {
 
                     @Override
                     public void onStateChanged(int id, TransferState state) {
 
                         if (TransferState.COMPLETED == state) {
-                                Log.d(TAG, "restart after upload pcap");
-                                startCaptureService();
-                                appStateRunning();
-                                file.delete();
-                                CaptureService.mBufferFirstStreamWrite = true;
+                            EngineHandler.removeMessages(0);
+                            EngineHandler.sendEmptyMessage(0);
+                            file.delete();//delete zip file when upload complete.
                         }
                     }
-
                     @Override
                     public void onProgressChanged(int id, long bytesCurrent, long bytesTotal) {
                         float percentDonef = ((float) bytesCurrent / (float) bytesTotal) * 100;
                         int percentDone = (int) percentDonef;
                         Log.e("Progress", percentDone + "");
                     }
-
                     @Override
                     public void onError(int id, Exception ex) {
                         Log.e("Error", ex.toString());
-                        // Handle errors
+                        EngineHandler.removeMessages(0);
+                        EngineHandler.sendEmptyMessage(0);
                     }
-
                 });
             }
         }
@@ -934,28 +982,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void uploadAzure(){
 
-        File file = new File(getApplicationContext().getFilesDir(), "upload_buffer.pcap");
-//        File targetFile = new File(getApplicationContext().getFilesDir(), "upload_buffer.tar.gz");
-//        try {
-//             FileOutputStream fOut = new FileOutputStream(targetFile);
-//                 BufferedOutputStream buffOut = new BufferedOutputStream(fOut);
-//                 GzipCompressorOutputStream gzOut = new GzipCompressorOutputStream(buffOut);
-//                 TarArchiveOutputStream tOut = new TarArchiveOutputStream(gzOut);
-//                TarArchiveEntry tarEntry = new TarArchiveEntry(file,"test.tar.gz");
-//
-//                tOut.putArchiveEntry(tarEntry);
-//
-//                // copy file to TarArchiveOutputStream
-//                Files.copy(Paths.get(file.getPath()), tOut);
-//
-//                tOut.closeArchiveEntry();
-//
-//                tOut.finish();
-//
-//
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
+        File file = new File(getApplicationContext().getFilesDir(), "azure_buffer.zip");
 
         if(file.exists()){
             if (file.length() == 0){
@@ -963,16 +990,87 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
             }
             else {
                 if(CaptureService.isServiceActive()) {
+                    Log.e(TAG,"Stop service");
                     CaptureService.stopService();
-                    appStateRunning();
                 }
+                UploadProof();
                 AzureUploader uploader = new AzureUploader(this, file);
                 uploader.execute();
+                EngineHandler.sendEmptyMessageDelayed(0,20000);
+                humanDisable = true;
             }
         }
 
     }
 
+    /**
+     * Upload proof file to
+     */
+    private void UploadProof(){
+        File file = new File(getApplicationContext().getFilesDir(), "proof");
+        if(!file.exists()){
+            try {
+                FileOutputStream FOS = new FileOutputStream(file);
+                FOS.write("DEVICE ID: ".getBytes());
+                FOS.write(Utils.getDeviceId(this).getBytes());
+                FOS.write("\n".getBytes());
+                FOS.write("LAST UPDATE TIME: ".getBytes());
+                DateFormat df = new SimpleDateFormat("EEE, d MMM yyyy, HH:mm");
+                String date = df.format(Calendar.getInstance().getTime());
+                FOS.write(date.getBytes());
+                FOS.close();
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+
+        String filename = "PROOF_DEVICE_ID:"+Utils.getDeviceId(MainActivity.this);
+        Log.e("FIle name", filename);
+        TransferObserver uploadObserver =
+                transferUtility.upload("sniffer-app", "PCAP/PROOF/" + filename, file);
+        uploadObserver.setTransferListener(new TransferListener() {
+            @Override
+            public void onStateChanged(int id, TransferState state) {
+                if (TransferState.COMPLETED == state) {
+                    Log.e(TAG,"Uploading proof completed");
+                }
+            }
+            @Override
+            public void onProgressChanged(int id, long bytesCurrent, long bytesTotal) {
+            }
+            @Override
+            public void onError(int id, Exception ex) {
+                Log.e("Uploading proof Error", ex.toString());
+            }
+        });
+    }
+
+    /**
+     * copy pcap file to double file-for s3 and azure.
+     * and delete original pcap file
+     */
+    private void CreateUploadFile(){
+        File pcapFile = new File(getApplicationContext().getFilesDir(), "upload_buffer.pcap");
+        File s3buffer = new File(getApplicationContext().getFilesDir(), "s3_buffer.zip");
+        File azurebuffer = new File(getApplicationContext().getFilesDir(), "azure_buffer.zip");
+        makeZip s3zip = new makeZip(s3buffer.getPath());
+        makeZip azure3zip = new makeZip(azurebuffer.getPath());
+        s3buffer.deleteOnExit();
+        azurebuffer.deleteOnExit();
+        try {
+            if(pcapFile.exists() && pcapFile.length() > 0) {
+                s3zip.addZipFile("s3_buffer.pcap", pcapFile.getPath());
+                azure3zip.addZipFile("azure_buffer.pcap", pcapFile.getPath());
+                s3zip.closeZip();
+                azure3zip.closeZip();
+                pcapFile.delete();
+                CaptureService.mBufferFirstStreamWrite = true;
+            }
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+
+    }
 
 
     @Override
@@ -981,10 +1079,9 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
 
     }
 
-    public static MainActivity getInstance(){
-        return instance;
-    }
-
+    /**
+     * set initial value to flags
+     */
     public void updateConnectedFlags() {
         ConnectivityManager connMgr = (ConnectivityManager)
                 getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -1000,9 +1097,53 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     }
 
 
+    /**
+     * Broadcast receiver to monitoring network status change.
+     */
 
+    public class NetworkReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            ConnectivityManager conn =  (ConnectivityManager)
+                    context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkInfo networkInfo = conn.getActiveNetworkInfo();
+            // Checks the user prefs and the network connection. Based on the result, decides whether
+            // to refresh the display or keep the current display.
+            // If the userpref is Wi-Fi only, checks to see if the device has a Wi-Fi connection.
+            if ((!Prefs.isEnabledUseCell(mPrefs)) && networkInfo != null
+                    && networkInfo.getType() == ConnectivityManager.TYPE_WIFI) {
+                // If device has its Wi-Fi connection, start upload engine
+
+                uploadData = true;
+                if(GlobalSetting.UA)
+                    uploadHandler.sendEmptyMessage(0);
+//                Toast.makeText(context, "WIFI enabled", Toast.LENGTH_SHORT).show();
+                Log.e(TAG,"WIFI enabled");
+
+                // If the setting is ANY network and there is a network connection, start upload engine
+            } else if (Prefs.isEnabledUseCell(mPrefs) && networkInfo != null) {
+                uploadData = true;
+                if(GlobalSetting.UA)
+                    uploadHandler.sendEmptyMessage(0);
+                // Otherwise, the app can't download content--either because there is no network
+                // connection (mobile or Wi-Fi), or because the pref setting is WIFI, and there
+                // is no Wi-Fi connection.
+                // Sets uploadData to false.
+            } else {
+                uploadData = false;
+                uploadHandler.removeMessages(0);
+                Log.e(TAG,"Connection has been Lost.");
+//                Toast.makeText(context, "Connection has been Lost.", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+
+    /**
+     * set Global setting from downloaded config file.
+     * or from shared preference.
+     */
     public class ConfigLoader extends AsyncTask<Void,Void,Void>{
-
         @Override
         protected Void doInBackground(Void... voids) {
             File file = new File(getApplicationContext().getFilesDir(), "configure.json");
@@ -1029,21 +1170,20 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                     }
                     GlobalSetting.setFILTER(filter_role);
                     GlobalSetting.SaveGlobalSetting(MainActivity.this);
-//                    file.delete();
+                    file.delete();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
+
             else{
                 GlobalSetting.LoadGlobalSetting(MainActivity.this);
             }
+
             Log.e("UD",GlobalSetting.UD+"");
             Log.e("UT",GlobalSetting.UT+"");
-            Log.e("filter",GlobalSetting.FILTER+"");
+            Log.e("FILTER",GlobalSetting.FILTER+"");
             Log.e("UA",GlobalSetting.UA+"");
-
-            if(GlobalSetting.UA)
-                startUplaodEngine();
 
             if(configProgress.isShowing())
                 configProgress.dismiss();

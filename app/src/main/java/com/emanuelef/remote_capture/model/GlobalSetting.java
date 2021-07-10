@@ -16,6 +16,7 @@ public class GlobalSetting {
     public static String SP_KEY_FILTER = "global_setting_filter";
     public static String SP_KEY_UT = "global_setting_upload_target";
     public static String SP_KEY_UA = "global_setting_upload_active";
+    public static int PROOFD = 180;
     public static ArrayList<Byte> PROT_FILTER = new ArrayList<>();
     public static JSONArray SMART_FILTER;
 

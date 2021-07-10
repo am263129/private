@@ -46,24 +46,11 @@ public class AzureUploader  extends AsyncTask<String, Void, Void> {
 
             // Create the container if it does not exist
             container.createIfNotExists();
-
-            // Make the container public
-            // Create a permissions object
-//            BlobContainerPermissions containerPermissions = new BlobContainerPermissions();
-
-            // Include public access in the permissions object
-//            containerPermissions
-//                    .setPublicAccess(BlobContainerPublicAccessType.CONTAINER);
-
-            // Set the permissions on the container
-//            container.uploadPermissions(containerPermissions);
-
-            // Get a reference to a blob in the container
             CloudBlockBlob blob = container
-                    .getBlockBlobReference("pcap");
+                    .getBlockBlobReference(Utils.getDeviceId(context)+"/"+Utils.getUniqueUploadFileName(context));
             blob.uploadFromFile(file.getPath());
-//            MainActivity.getInstance().startCaptureService();
-
+            Log.e("Upload","Azure end");
+            file.delete();
 
         } catch (Exception t) {
             Log.e("Upload Azure","error");
