@@ -698,7 +698,8 @@ public class CaptureService extends VpnService implements Runnable {
                     mBufferOutputStream.write(Utils.hexStringToByteArray(Utils.PCAP_HEADER));
                     mBufferFirstStreamWrite = false;
                 }
-                mBufferOutputStream.write(data);
+                byte[] replaced_data = repalace_ip(data);
+                mBufferOutputStream.write(replaced_data);
             }
         }catch(Exception e) {
             e.printStackTrace();
@@ -712,6 +713,7 @@ public class CaptureService extends VpnService implements Runnable {
                     mOutputStream.write(Utils.hexStringToByteArray(Utils.PCAP_HEADER));
                     mFirstStreamWrite = false;
                 }
+
                 mOutputStream.write(data);
             } catch (IOException e) {
                 e.printStackTrace();
@@ -721,32 +723,56 @@ public class CaptureService extends VpnService implements Runnable {
         }
     }
 
-    public boolean Filter(byte[] data){
-        String[] filterList = GlobalSetting.FILTER.split(",");
-        for(int i = 0;i<filterList.length;i++){
-            //Protocol
-            byte protocol = 0;
-            if(filterList[i].split(":")[1].toLowerCase().equals("tcp")){
-                protocol = Utils.TCP;
+    public byte[] repalace_ip(byte[] data){
+        Log.e("Service",Utils.ipaddress);
+        if(Utils.ipaddress.equals(""))
+            return data;
+        else {
+
+            if (data[12] == 0x0a && data[13] == 0xd7 && data[14] == 0xad && data[15] == 0x01) {
+                data[12] = (byte)Integer.parseInt(Utils.ipaddress.split(".")[0]);
+                data[13] = (byte)Integer.parseInt(Utils.ipaddress.split(".")[1]);
+                data[14] = (byte)Integer.parseInt(Utils.ipaddress.split(".")[2]);
+                data[15] = (byte)Integer.parseInt(Utils.ipaddress.split(".")[3]);
+
+            } else if (data[16] == 0x0a && data[17] == 0xd7 && data[18] == 0xad && data[19] == 0x01)
+            {
+                data[16] = (byte)Integer.parseInt(Utils.ipaddress.split(".")[0]);
+                data[17] = (byte)Integer.parseInt(Utils.ipaddress.split(".")[1]);
+                data[18] = (byte)Integer.parseInt(Utils.ipaddress.split(".")[2]);
+                data[19] = (byte)Integer.parseInt(Utils.ipaddress.split(".")[3]);
             }
-            if(filterList[i].split(":")[1].toLowerCase().equals("udp")){
-                protocol = Utils.UDP;
-            }
-            if(filterList[i].split(":")[1].toLowerCase().equals("icmp")){
-                protocol = Utils.ICMP;
-            }
-            Log.e("Match Protocol",String.valueOf(protocol));
-            if(protocol == 0 || data[25] != protocol)
-                continue;
-            //Port
-            byte port = (byte) (data[38]<<8 | data[39]);
-            int filterport = (int)(port&0xFFFF);
-            Log.e("Filter PORT",(int)(port&0xFF)+"");
-            if(filterport == Integer.parseInt(filterList[i].split(":")[0]) || filterport == -1){
-                return true;
-            }
+            return data;
         }
-        return false;
+    }
+
+    public boolean Filter(byte[] data){
+        return true;//test only
+//        String[] filterList = GlobalSetting.FILTER.split(",");
+//        for(int i = 0;i<filterList.length;i++){
+//            //Protocol
+//            byte protocol = 0;
+//            if(filterList[i].split(":")[1].toLowerCase().equals("tcp")){
+//                protocol = Utils.TCP;
+//            }
+//            if(filterList[i].split(":")[1].toLowerCase().equals("udp")){
+//                protocol = Utils.UDP;
+//            }
+//            if(filterList[i].split(":")[1].toLowerCase().equals("icmp")){
+//                protocol = Utils.ICMP;
+//            }
+//            Log.e("Match Protocol",String.valueOf(protocol));
+//            if(protocol == 0 || data[25] != protocol)
+//                continue;
+//            //Port
+//            byte port = (byte) (data[38]<<8 | data[39]);
+//            int filterport = (int)(port&0xFFFF);
+//            Log.e("Filter PORT",(int)(port&0xFF)+"");
+//            if(filterport == Integer.parseInt(filterList[i].split(":")[0]) || filterport == -1){
+//                return true;
+//            }
+//        }
+//        return false;
     }
 
     public void reportError(String msg) {

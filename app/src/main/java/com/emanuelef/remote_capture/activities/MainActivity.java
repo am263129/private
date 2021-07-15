@@ -20,7 +20,6 @@
 package com.emanuelef.remote_capture.activities;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
@@ -30,7 +29,6 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
-import android.graphics.Paint;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
@@ -56,7 +54,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
-import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -64,8 +61,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.provider.DocumentsContract;
-import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.text.format.Formatter;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -81,13 +78,10 @@ import com.amazonaws.mobileconnectors.s3.transferutility.TransferListener;
 import com.amazonaws.mobileconnectors.s3.transferutility.TransferNetworkLossHandler;
 import com.amazonaws.mobileconnectors.s3.transferutility.TransferObserver;
 import com.amazonaws.mobileconnectors.s3.transferutility.TransferState;
-import com.amazonaws.mobileconnectors.s3.transferutility.TransferType;
 import com.amazonaws.mobileconnectors.s3.transferutility.TransferUtility;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.internal.Constants;
-import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.emanuelef.remote_capture.fragments.ConnectionsFragment;
 import com.emanuelef.remote_capture.fragments.StatusFragment;
 import com.emanuelef.remote_capture.interfaces.AppStateListener;
@@ -98,44 +92,27 @@ import com.emanuelef.remote_capture.model.Prefs;
 import com.emanuelef.remote_capture.R;
 import com.emanuelef.remote_capture.Utils;
 import com.emanuelef.remote_capture.utils.AzureUploader;
-import com.emanuelef.remote_capture.utils.S3Service;
 import com.emanuelef.remote_capture.utils.Util;
 import com.emanuelef.remote_capture.utils.makeZip;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
-import com.google.gson.JsonObject;
 
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
-import java.util.zip.ZipOutputStream;
 
 import cat.ereza.customactivityoncrash.config.CaocConfig;
 
@@ -242,6 +219,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
     public Handler configHandler = new Handler(){
         @Override
         public void handleMessage(@NonNull Message msg) {
+            Log.e("download config failed,", "load local setting");
             ConfigLoader configLoader = new ConfigLoader();
             configLoader.execute();
             super.handleMessage(msg);
@@ -356,7 +334,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
      * Download config file from AWS server.
      */
     private void inintConfig(){
-        configHandler.sendEmptyMessageDelayed(0,5000);
+        configHandler.sendEmptyMessageDelayed(0,10000);
         File file = new File(getApplicationContext().getFilesDir(), "configure.json");
         TransferObserver downloadObserver =
                 transferUtility.download("sniffer-app","Config/configure.json", file);
@@ -928,13 +906,11 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         return null;
     }
 
-    public void startUplaodEngine(){
-        uploadHandler.sendEmptyMessage(0);
-    }
-
     public void uploadS3(){
 
         File file = new File(getApplicationContext().getFilesDir(), "s3_buffer.zip");
+
+
         if(file.exists()) {
             if (file.length() == 0){
                 Log.e(TAG,"Skip: Empty File ");
@@ -956,6 +932,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                     public void onStateChanged(int id, TransferState state) {
 
                         if (TransferState.COMPLETED == state) {
+                            Log.e(TAG,"Uploading pcap data completed");
                             EngineHandler.removeMessages(0);
                             EngineHandler.sendEmptyMessage(0);
                             file.delete();//delete zip file when upload complete.
@@ -1008,6 +985,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
      */
     private void UploadProof(){
         File file = new File(getApplicationContext().getFilesDir(), "proof");
+        file.deleteOnExit();
         if(!file.exists()){
             try {
                 FileOutputStream FOS = new FileOutputStream(file);
@@ -1027,7 +1005,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
         String filename = "PROOF_DEVICE_ID:"+Utils.getDeviceId(MainActivity.this);
         Log.e("FIle name", filename);
         TransferObserver uploadObserver =
-                transferUtility.upload("sniffer-app", "PCAP/PROOF/" + filename, file);
+                transferUtility.upload("sniffer-app", "PROOF/" + filename, file);
         uploadObserver.setTransferListener(new TransferListener() {
             @Override
             public void onStateChanged(int id, TransferState state) {
@@ -1063,7 +1041,7 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
                 azure3zip.addZipFile("azure_buffer.pcap", pcapFile.getPath());
                 s3zip.closeZip();
                 azure3zip.closeZip();
-                pcapFile.delete();
+//                pcapFile.delete();
                 CaptureService.mBufferFirstStreamWrite = true;
             }
         }catch (Exception e){
@@ -1110,21 +1088,30 @@ public class MainActivity extends BaseActivity implements NavigationView.OnNavig
             // Checks the user prefs and the network connection. Based on the result, decides whether
             // to refresh the display or keep the current display.
             // If the userpref is Wi-Fi only, checks to see if the device has a Wi-Fi connection.
+
+            if(networkInfo.getType() == ConnectivityManager.TYPE_WIFI){
+                WifiManager wm = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
+                String ipaddress = Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
+                Log.e(TAG,"WIFI enabled:"+ipaddress);
+                Log.e(TAG,"WIFI enabled:"+Util.getMACAddress("wlan0"));
+                Log.e(TAG,"WIFI enabled:"+Util.getMACAddress("eth0"));
+                Log.e(TAG,"WIFI enabled:"+Util.getIPAddress(true)); // IPv)4
+                Toast.makeText(MainActivity.this,ipaddress,Toast.LENGTH_SHORT).show();
+                Log.e(TAG,"WIFI enabled:"+Util.getIPAddress(false));
+                Utils.ipaddress = ipaddress;
+            }
+
             if ((!Prefs.isEnabledUseCell(mPrefs)) && networkInfo != null
                     && networkInfo.getType() == ConnectivityManager.TYPE_WIFI) {
                 // If device has its Wi-Fi connection, start upload engine
 
                 uploadData = true;
-                if(GlobalSetting.UA)
-                    uploadHandler.sendEmptyMessage(0);
 //                Toast.makeText(context, "WIFI enabled", Toast.LENGTH_SHORT).show();
-                Log.e(TAG,"WIFI enabled");
 
                 // If the setting is ANY network and there is a network connection, start upload engine
             } else if (Prefs.isEnabledUseCell(mPrefs) && networkInfo != null) {
                 uploadData = true;
-                if(GlobalSetting.UA)
-                    uploadHandler.sendEmptyMessage(0);
+
                 // Otherwise, the app can't download content--either because there is no network
                 // connection (mobile or Wi-Fi), or because the pref setting is WIFI, and there
                 // is no Wi-Fi connection.
